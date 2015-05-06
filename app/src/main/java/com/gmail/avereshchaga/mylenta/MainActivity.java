@@ -1,7 +1,10 @@
 package com.gmail.avereshchaga.mylenta;
 
 import android.app.Activity;
+import android.content.BroadcastReceiver;
 import android.content.Context;
+import android.content.Intent;
+import android.content.IntentFilter;
 import android.net.ConnectivityManager;
 import android.net.NetworkInfo;
 import android.os.AsyncTask;
@@ -18,19 +21,8 @@ import com.gmail.avereshchaga.mylenta.utils.Utils;
 import com.nostra13.universalimageloader.core.ImageLoader;
 import com.nostra13.universalimageloader.core.ImageLoaderConfiguration;
 
-import org.apache.http.HttpEntity;
-import org.apache.http.HttpResponse;
-import org.apache.http.client.ClientProtocolException;
-import org.apache.http.client.HttpClient;
-import org.apache.http.client.methods.HttpGet;
-import org.apache.http.impl.client.DefaultHttpClient;
-import org.apache.http.util.EntityUtils;
-
-import java.io.IOException;
-import java.io.UnsupportedEncodingException;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.concurrent.ThreadPoolExecutor;
 
 import de.keyboardsurfer.android.widget.crouton.Crouton;
 import de.keyboardsurfer.android.widget.crouton.Style;
@@ -42,23 +34,39 @@ public class MainActivity extends Activity {
     private NewsItemAdapter dataAdapter;
     private SwipeRefreshLayout mSwipeRefreshLayout;
     private ArrayList<News> listNews;
-    private int counter;
+
+    private BroadcastReceiver receiver = new BroadcastReceiver() {
+        @Override
+        public void onReceive(Context context, Intent intent) {
+            List<News> news = null;
+            if (intent != null && intent.getParcelableArrayListExtra(Utils.KEY_LIST) != null) {
+                news = intent.getParcelableArrayListExtra(Utils.KEY_LIST);
+            }
+            if (news != null && !news.isEmpty()) {
+                Utils.sortAndTrimList(listNews, news);
+                dataAdapter.notifyDataSetChanged();
+                mSwipeRefreshLayout.setRefreshing(false);
+            }
+        }
+    };
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         initImageLoader();
         setContentView(R.layout.activity_main);
-        if (savedInstanceState == null || !savedInstanceState.containsKey(Utils.KEY)) {
+        if (savedInstanceState == null || !savedInstanceState.containsKey(Utils.KEY_SAVE_LIST)) {
             listNews = new ArrayList<>();
         } else {
-            listNews = savedInstanceState.getParcelableArrayList(Utils.KEY);
+            listNews = savedInstanceState.getParcelableArrayList(Utils.KEY_SAVE_LIST);
         }
         dataListView = (ListView) this.findViewById(R.id.postListView);
         dataAdapter = new NewsItemAdapter(this, R.layout.news_line_item, listNews);
         dataListView.setAdapter(dataAdapter);
         dataListView.setOnItemClickListener(new MyOnItemClickListener());
         initSwipeRefreshLayout();
+        //Subscribes to the events of our service
+        registerReceiver(receiver, new IntentFilter(DownloadService.CHANNEL));
         if (listNews == null || listNews.isEmpty()) {
             mSwipeRefreshLayout.setProgressViewOffset(false, 0,
                     (int) TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, 24, getResources().getDisplayMetrics()));
@@ -69,7 +77,7 @@ public class MainActivity extends Activity {
 
     @Override
     protected void onSaveInstanceState(Bundle outState) {
-        outState.putParcelableArrayList(Utils.KEY, listNews);
+        outState.putParcelableArrayList(Utils.KEY_SAVE_LIST, listNews);
         super.onSaveInstanceState(outState);
     }
 
@@ -93,13 +101,12 @@ public class MainActivity extends Activity {
         ConnectivityManager cm = (ConnectivityManager) getSystemService(Context.CONNECTIVITY_SERVICE);
         NetworkInfo ni = cm.getActiveNetworkInfo();
         if (ni != null && ni.isConnected()) {
-            new RssDownloadTask().execute(Utils.URL_LENTA_RU);
-            new RssDownloadTask().execute(Utils.URL_GAZETA_RU);
+            DownloadService.startActionDownload(this, Utils.URL_LENTA_RU);
+            DownloadService.startActionDownload(this, Utils.URL_GAZETA_RU);
         } else {
             Crouton.makeText(this, getResources().getString(R.string.no_internet_connection), Style.ALERT).show();
             mSwipeRefreshLayout.setRefreshing(false);
         }
-
     }
 
     private class MyOnItemClickListener implements AdapterView.OnItemClickListener {
@@ -110,30 +117,9 @@ public class MainActivity extends Activity {
         }
     }
 
-    private class RssDownloadTask extends AsyncTask<String, Void, List<News>> {
-
-        @Override
-        protected void onPreExecute() {
-            counter++;
-        }
-
-        @Override
-        protected List<News> doInBackground(String... params) {
-            return Utils.parseRssData(Utils.getXmlFromUrl(params[0]));
-        }
-
-        @Override
-        protected void onPostExecute(List<News> news) {
-            if (news != null && !news.isEmpty()) {
-                Utils.sortAndTrimList(listNews, news);
-                dataAdapter.notifyDataSetChanged();
-            }
-            counter--;
-            if (counter == 0) {
-                mSwipeRefreshLayout.setRefreshing(false);
-            }
-
-        }
-
+    @Override
+    protected void onStop() {
+        unregisterReceiver(receiver);
+        super.onStop();
     }
 }

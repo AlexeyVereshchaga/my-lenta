@@ -40,7 +40,8 @@ public class Utils {
     public static final String URL_GAZETA_RU = "http://www.gazeta.ru/export/rss/lenta.xml";
     public static final String TAG = "MyLenta";
     public static final int NUMBER_OF_NEWS = 200;
-    public static final String KEY = "com.gmail.avereshchaga.mylenta_save";
+    public static final String KEY_SAVE_LIST = "com.gmail.avereshchaga.mylenta_save";
+    public static final String KEY_LIST = "com.gmail.avereshchaga.LIST";
 
     private final static String DATE_FORMAT = "EEE, dd MMM yyyy HH:mm:ss";
 
